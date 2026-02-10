@@ -1,25 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(*)",
-      "Glob(*)",
-      "Grep(*)"
-    ],
-    "ask": [
-      "Bash(git :*)",
-      "Bash(gh :*)"
-    ],
-    "deny": [
-      "Read(./.env)",
-      "Read(./.env.*)",
-      "Bash(rm -rf :*)",
-      "Bash(rm -r :*)",
-      "Bash(git push --force :*)",
-      "Bash(git push -f :*)",
-      "Bash(git reset --hard :*)",
-      "Bash(gh repo delete :*)",
-      "Bash(sudo :*)"
+      "Read(~/.cvi/**)",
+      "Edit(~/.cvi/**)",
+      "Bash(bash ${CLAUDE_PLUGIN_ROOT}/scripts/*)"
     ]
-  },
-  "cleanupPeriodDays": 30
+  }
 }

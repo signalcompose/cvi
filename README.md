@@ -1,162 +1,469 @@
-# claude-tools
+# CVI (Claude Voice Integration)
 
-Claude Code plugins by SignalCompose
+Claude Codeのタスク完了時に音声通知を行うシステム
 
-## Overview
+---
 
-This repository serves as a marketplace for Claude Code plugins developed by SignalCompose. Plugins are managed as Git subtrees or directly within the repository.
+## 概要
 
-> **Official Documentation**: See [Claude Code Plugins Documentation](https://code.claude.com/docs/en/plugins) for details on the plugin system.
+**CVI**は、Claude Codeの作業を音声でフィードバックするhooksシステムです。
 
-## Available Plugins
+### 特徴
 
-| Plugin | Description | Category | Status |
-|--------|-------------|----------|--------|
-| [CVI](./plugins/cvi) | Claude Voice Integration - Voice notifications for Claude Code on macOS | productivity | Available |
-| [YPM](./plugins/ypm) | Your Project Manager - Project management for Claude Code | productivity | Available |
-| [chezmoi](./plugins/chezmoi) | Dotfiles management integration using chezmoi | productivity | Available |
-| [code](./plugins/code) | Code review workflow integration for git commits | developer-tools | Available |
-| [utils](./plugins/utils) | Utility commands for plugin management (cache clearing, etc.) | developer-tools | Available |
-| [codex](./plugins/codex) | OpenAI Codex CLI integration for research and code review | developer-tools | Available |
-| [gemini](./plugins/gemini) | Google Gemini CLI integration for web search | productivity | Available |
-| [kiro](./plugins/kiro) | AWS Kiro CLI integration for AWS expert assistance | developer-tools | Available |
+- 🔊 **音声通知**: タスク完了を音声で通知
+- ⏸️ **自動中断**: 読み上げ中に新しい指示を出すと自動停止
+- 🌐 **多言語対応**: 日本語・英語を自動判定
+- 🎯 **カスタマイズ可能**: [VOICE]タグで読み上げ内容を制御
 
-## Quick Start
+---
 
-```bash
-# 1. Add the marketplace
-/plugin marketplace add signalcompose/claude-tools
+## 必要環境
 
-# 2. Browse plugins interactively
-/plugin    # Opens the Discover tab
+- **OS**: macOS（`say`, `afplay`コマンド使用）
+- **Claude Code**: 最新版
+- **権限**: スクリプト実行権限
 
-# 3. Install a plugin
-/plugin install cvi@claude-tools
+---
 
-# 4. Use plugin commands
-/cvi:status
-```
+## インストール
 
-## Installation
+### プラグインとしてインストール（推奨）
 
-### Add Marketplace
+Claude Codeのプラグインシステムを使用してインストールできます：
 
 ```bash
-/plugin marketplace add signalcompose/claude-tools
+# Claude Codeで以下のコマンドを実行
+/plugin add signalcompose/cvi
 ```
 
-### Install Plugins
+これだけで完了です。hooks、コマンド、スキルが自動的に設定されます。
 
-You can browse and install plugins using the interactive `/plugin` command, or use CLI commands directly:
+### 初期設定
+
+インストール後、必要に応じて設定を調整：
 
 ```bash
-# Install specific plugin (format: plugin-name@marketplace-name)
-/plugin install cvi@claude-tools
-/plugin install ypm@claude-tools
-/plugin install chezmoi@claude-tools
-/plugin install code@claude-tools
-/plugin install utils@claude-tools
-/plugin install codex@claude-tools
-/plugin install gemini@claude-tools
-/plugin install kiro@claude-tools
+/cvi:speed 200    # 読み上げ速度（デフォルト: 200wpm）
+/cvi:lang ja      # [VOICE]タグ言語（デフォルト: ja）
+/cvi:voice list   # 利用可能な音声を確認
 ```
 
-### Install with Scope (Optional)
+---
+
+### 手動インストール（代替方法）
+
+プラグインを使用せず手動でセットアップする場合：
+
+#### cvi-setupスクリプト
 
 ```bash
-# Install to project scope (shared with team via .claude/settings.json)
-/plugin install cvi@claude-tools --scope project
+# グローバルインストール（全プロジェクトで有効）
+scripts/cvi-setup global
 
-# Install to user scope (default, personal settings)
-/plugin install cvi@claude-tools --scope user
-
-# Install to local scope (local settings only)
-/plugin install cvi@claude-tools --scope local
+# または、プロジェクトローカル（現在のプロジェクトのみ）
+scripts/cvi-setup project
 ```
 
-## Plugin Management
+#### 完全手動インストール
 
-### Update Marketplace
+手動でセットアップする場合：
+
+#### 1. スクリプトをコピー
 
 ```bash
-/plugin marketplace update claude-tools
+# スクリプトを配置
+cp scripts/notify-end.sh ~/.claude/scripts/
+cp scripts/notify-input.sh ~/.claude/scripts/
+cp scripts/kill-voice.sh ~/.claude/scripts/
+
+# 制御コマンドをコピー（グローバルのみ）
+cp scripts/cvi ~/.claude/scripts/
+cp scripts/cvi-speed ~/.claude/scripts/
+cp scripts/cvi-lang ~/.claude/scripts/
+cp scripts/cvi-check ~/.claude/scripts/
+
+# 実行権限を付与
+chmod +x ~/.claude/scripts/*.sh
+chmod +x ~/.claude/scripts/cvi*
 ```
 
-### Clear Plugin Cache (Important!)
+#### 2. hooks設定
 
-Due to a known Claude Code bug ([#14061](https://github.com/anthropics/claude-code/issues/14061), [#15642](https://github.com/anthropics/claude-code/issues/15642)), running `/plugin marketplace update` updates the marketplace repository but **does not invalidate the plugin cache**. This means updated plugins may not work correctly.
+`~/.claude/settings.json`を編集（または作成）：
 
-**To apply updates properly:**
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/kill-voice.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/notify-end.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/notify-input.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
-1. Update the marketplace:
+#### 3. 初期設定ファイル
+
+`~/.cvi/config`を作成：
+
+```bash
+mkdir -p ~/.cvi
+cat > ~/.cvi/config <<EOF
+CVI_ENABLED=on
+SPEECH_RATE=200
+VOICE_LANG=ja
+EOF
+```
+
+#### 4. Claude Codeを再起動
+
+設定を反映させるため、Claude Codeを再起動してください。
+
+---
+
+## 使い方
+
+### 基本的な使い方
+
+1. Claude Codeでタスクを実行
+2. タスクが完了すると音声通知
+3. 読み上げ中に新しい指示を出すと自動停止
+
+### 制御コマンド
+
+#### cvi - 音声通知の有効/無効
+
+```bash
+cvi on       # 音声通知を有効化
+cvi off      # 音声通知を無効化
+cvi show     # 現在の設定を表示
+cvi help     # ヘルプを表示
+```
+
+#### cvi:speed - 読み上げ速度の調整
+
+```bash
+cvi:speed           # 現在の速度を確認
+cvi:speed 220       # 速度を220wpmに設定
+cvi:speed reset     # デフォルト（200wpm）に戻す
+```
+
+推奨速度：
+- 180 wpm: ゆっくり、聞き取りやすい
+- 200 wpm: 標準速度（デフォルト）
+- 220 wpm: やや速め、効率的
+
+#### cvi:lang - 言語切り替え
+
+```bash
+cvi:lang           # 現在の言語を確認
+cvi:lang ja        # 日本語に設定
+cvi:lang en        # 英語に設定
+cvi:lang reset     # デフォルト（ja）に戻す
+```
+
+言語設定の役割：
+- **日本語（ja）**: フォールバックメッセージが日本語になります
+- **英語（en）**: フォールバックメッセージが英語になります
+
+注意:
+- 実際の読み上げ音声は`cvi:voice`で設定します
+- 日本語モードでは常にシステムデフォルト音声を使用
+- 英語モードでは`cvi:voice`で設定した音声を使用
+- [VOICE]タグ内のテキストは言語設定に関わらずそのまま読み上げられます
+
+#### cvi:voice - 音声の選択（言語別設定）
+
+```bash
+cvi:voice                    # 現在の設定を確認
+cvi:voice en Zoe             # 英語音声をZoeに設定
+cvi:voice ja Kyoko           # 日本語音声をKyokoに設定
+cvi:voice mode auto          # 自動音声選択モード（デフォルト）
+cvi:voice mode fixed         # 固定音声モード
+cvi:voice fixed Zoe          # 全言語でZoeを使用
+cvi:voice list               # 利用可能な音声一覧
+cvi:voice reset              # デフォルトに戻す
+```
+
+**言語別音声設定**:
+- **英語音声** (`cvi:voice en [VOICE]`): 英語テキスト用の音声
+- **日本語音声** (`cvi:voice ja [VOICE]`): 日本語テキスト用の音声
+- 各言語で異なる音声を設定できます
+
+**音声モード**:
+- **autoモード** (デフォルト): 言語に応じて自動的に音声を切り替え
+- **fixedモード**: 全ての言語で同じ音声を使用
+
+**人気の音声**:
+
+*日本語*:
+- **system**: システムデフォルト（日本語Siri）
+- **Kyoko**: 標準日本語音声（女性）
+- **Otoya**: 標準日本語音声（男性）
+
+*英語*:
+- **system**: システムデフォルト（英語Siri）
+- **Samantha** (US): 標準的でクリアな女性の声
+- **Zoe** (UK): プレミアム女性音声
+- **Karen** (AU): オーストラリア英語、女性
+- **Daniel** (UK): イギリス英語、男性
+
+#### cvi:auto - 言語自動検出
+
+```bash
+cvi:auto           # 現在の設定を確認
+cvi:auto on        # 言語自動検出を有効化
+cvi:auto off       # 言語自動検出を無効化（デフォルト）
+cvi:auto status    # 詳細ステータス表示
+```
+
+**言語自動検出**:
+- [VOICE]タグ内のテキストを分析し、日本語/英語を自動判定
+- 日本語検出時 → 日本語音声を使用
+- 英語検出時 → 英語音声を使用
+- 設定言語に関わらず、適切な音声で読み上げ
+
+**使用例**:
+```bash
+# 日本語環境で英語学習
+cvi:lang ja            # フォールバックは日本語
+cvi:voice ja system    # 日本語はシステム音声
+cvi:voice en Zoe       # 英語はZoe（学習用）
+cvi:auto on            # 自動検出ON
+
+# 動作
+[VOICE]Task completed[/VOICE]  # Zoeで英語読み上げ
+[VOICE]完了しました[/VOICE]      # システム音声で日本語
+```
+
+#### cvi:check - セットアップ診断
+
+```bash
+cvi:check          # セットアップ状態を診断
+```
+
+チェック項目：
+- Siri音声設定
+- スクリプト実行権限
+- hooks設定
+- 読み上げ速度
+- 言語設定
+
+### [VOICE]タグの使用
+
+Claude Codeのレスポンスに`[VOICE]...[/VOICE]`タグを含めると、その部分が読み上げられます：
+
+```markdown
+詳細な技術的説明が続く...
+
+[VOICE]ファイルの編集が完了しました。3つのファイルを更新しました。[/VOICE]
+```
+
+タグがない場合は、メッセージの最初の200文字が自動的に読み上げられます。
+
+### Siri音声の使用（推奨）
+
+より自然で流暢な読み上げのため、Siri音声を設定してください：
+
+1. **システム設定** > **アクセシビリティ** > **読み上げコンテンツ**
+2. **システムの声**で「Siri (声2)」または「Eloquence」を選択
+3. CVIは自動的にシステムデフォルト音声を使用
+
+確認方法：
+```bash
+say "これはテストメッセージです"
+```
+
+Siri音声で読み上げられれば、CVIでも同じ音声が使われます。
+
+---
+
+## 高度なカスタマイズ
+
+### 音量調整
+
+`~/.claude/scripts/notify-end.sh`の以下の行を編集：
+
+```bash
+# 音声読み上げ音量を変更（0.0〜1.0）
+afplay -v 0.6 "$TEMP_AUDIO"  # デフォルト: 0.6（60%）
+
+# 通知音の音量を変更（0.0〜1.0）
+afplay -v 1.0 /System/Library/Sounds/Glass.aiff  # デフォルト: 1.0（100%）
+```
+
+### 通知音の変更
+
+Glass音以外を使用する場合：
+
+```bash
+# 利用可能な音を確認
+ls /System/Library/Sounds/
+
+# notify-end.sh内で別の音に変更
+afplay -v 1.0 /System/Library/Sounds/Ping.aiff &
+```
+
+---
+
+## トラブルシューティング
+
+### Q: 音声が再生されない
+
+**まず診断コマンドを実行**:
+```bash
+cvi:check
+```
+
+**確認事項**:
+1. CVI が有効になっているか確認
    ```bash
-   /plugin marketplace update claude-tools
+   cvi status
+   ```
+2. macOSの音量がミュートになっていないか確認
+3. スクリプトに実行権限があるか確認
+   ```bash
+   ls -l ~/.claude/scripts/notify-end.sh
+   ```
+4. hooks設定が正しいか確認
+   ```bash
+   cat ~/.claude/settings.json
    ```
 
-2. Clear the cache for updated plugins:
-   ```bash
-   # Clear specific plugin cache
-   /utils:clear-plugin-cache cvi
-   /utils:clear-plugin-cache utils
+### Q: 読み上げが不自然・ロボット的
 
-   # Or clear all plugin caches for this marketplace
-   /utils:clear-plugin-cache --all --marketplace claude-tools
-   ```
+**Siri音声を設定**:
+1. **システム設定** > **アクセシビリティ** > **読み上げコンテンツ**
+2. **システムの声**で「Siri (声2)」を選択
+3. Claude Codeを再起動
 
-3. Restart Claude Code
-
-**Dry run** (see what would be deleted):
+確認:
 ```bash
-/utils:clear-plugin-cache cvi --dry-run
+say "テストメッセージです"
 ```
 
-### Other Commands
+### Q: 読み上げが中断されない
+
+**確認事項**:
+1. `UserPromptSubmit`フックが設定されているか
+2. `kill-voice.sh`に実行権限があるか
+3. Claude Codeを再起動したか
+
+### Q: 読み上げ速度を変更したい
 
 ```bash
-# List all marketplaces
-/plugin marketplace list
-
-# Remove marketplace
-/plugin marketplace remove claude-tools
-
-# Uninstall plugin
-/plugin uninstall cvi@claude-tools
-
-# Disable plugin (without uninstalling)
-/plugin disable cvi@claude-tools
-
-# Enable plugin
-/plugin enable cvi@claude-tools
-
-# Validate marketplace
-/plugin validate .
+cvi:speed 220  # 速めに設定
+cvi:speed 180  # ゆっくりに設定
 ```
 
-## Documentation
+### Q: 英語で読み上げたい
 
-- [docs/INDEX.md](./docs/INDEX.md) - Documentation index
-- [docs/specifications.md](./docs/specifications.md) - Marketplace and plugin specifications
-- [docs/architecture.md](./docs/architecture.md) - Architecture overview
-- [docs/development-guide.md](./docs/development-guide.md) - Plugin development guide
-- [docs/onboarding.md](./docs/onboarding.md) - Onboarding guide for contributors
+```bash
+cvi:lang en    # 英語に切り替え
+```
 
-### Official Claude Code Documentation
+注意: [VOICE]タグ内のテキストは言語設定に関わらずそのまま読み上げられます。
 
-- [Create plugins](https://code.claude.com/docs/en/plugins) - Plugin creation guide
-- [Plugins reference](https://code.claude.com/docs/en/plugins-reference) - Technical reference
-- [Plugin marketplaces](https://code.claude.com/docs/en/plugin-marketplaces) - Marketplace creation
-- [Discover plugins](https://code.claude.com/docs/en/discover-plugins) - Plugin installation
+### Q: エラーメッセージが表示される
 
-## Contributing
+**デバッグ方法**:
+```bash
+# スクリプトを直接実行してエラー確認
+bash ~/.claude/scripts/notify-end.sh < /dev/null
 
-1. Fork this repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes
-4. Push to your branch
-5. Create a Pull Request
+# 診断実行
+cvi:check
+```
 
-See [docs/development-guide.md](./docs/development-guide.md) for detailed instructions.
+---
 
-## License
+## アンインストール
 
-MIT License
+### グローバルインストールの場合
+
+```bash
+# 音声通知を無効化
+cvi off
+
+# スクリプトを削除
+rm ~/.claude/scripts/notify-end.sh
+rm ~/.claude/scripts/notify-input.sh
+rm ~/.claude/scripts/kill-voice.sh
+rm ~/.claude/scripts/cvi
+rm ~/.claude/scripts/cvi-*
+
+# 設定ファイルを削除
+rm -rf ~/.cvi
+
+# スラッシュコマンドを削除
+rm ~/.claude/commands/cvi*.md
+
+# settings.jsonからhooks設定を削除
+# （手動で編集が必要）
+```
+
+### プロジェクトローカルの場合
+
+```bash
+# プロジェクトのスクリプトを削除
+rm -rf .claude/scripts/notify-*.sh
+rm -rf .claude/scripts/kill-voice.sh
+
+# プロジェクトのsettings.jsonからhooks設定を削除
+# （手動で編集が必要）
+```
+
+---
+
+## 貢献方法
+
+バグ報告や機能要望は、GitHubのIssuesでお知らせください。
+
+プルリクエストも歓迎します！
+
+---
+
+## ライセンス
+
+MIT License - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
+
+---
+
+## 参考
+
+- [Claude Code公式ドキュメント](https://docs.claude.com/en/docs/claude-code)
+- [macOS `say`コマンド](https://ss64.com/mac/say.html)
+- [Claude Code Hooks](https://docs.claude.com/en/docs/claude-code/hooks)
+
+---
+
+**快適なClaude Codeライフを！** 🚀
